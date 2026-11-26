@@ -3,17 +3,20 @@ services:
     image: postgres:16
     container_name: inspection-db
     restart: unless-stopped
+    # ค่าทั้งหมดอ่านจากไฟล์ .env ที่ root (docker compose โหลดให้อัตโนมัติ)
+    # คัดลอก .env.example เป็น .env ก่อนรันครั้งแรก
     environment:
-      POSTGRES_USER: appuser
-      POSTGRES_PASSWORD: devpassword
-      POSTGRES_DB: inspection
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is not set - copy .env.example to .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set - copy .env.example to .env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is not set - copy .env.example to .env}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - ./seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
       - inspection-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U appuser -d inspection"]
+      # $$ = ตัวแปรของ container (ไม่ให้ compose แทนค่าเอง)
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,9 +24,9 @@ services:
 volumes:
   inspection-data:
 
-# DATABASE_URL:
-#   postgresql://appuser:devpassword@localhost:5432/inspection
+# DATABASE_URL (ประกอบจากค่าใน .env):
+#   postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@localhost:<POSTGRES_PORT>/<POSTGRES_DB>
 #
-# seed.sql จะถูกรันอัตโนมัติเฉพาะตอนสร้าง volume ครั้งแรกเท่านั้น
-# ถ้าแก้ seed.sql แล้วอยากให้มีผล ให้ล้าง volume ก่อน:
+# seed.sql และค่า POSTGRES_* จะมีผลเฉพาะตอนสร้าง volume ครั้งแรกเท่านั้น
+# ถ้าแก้ seed.sql หรือเปลี่ยนรหัสผ่านแล้วอยากให้มีผล ให้ล้าง volume ก่อน:
 #   docker compose down -v && docker compose up -d
