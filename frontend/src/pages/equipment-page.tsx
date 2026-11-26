@@ -1,0 +1,100 @@
+import { CriticalityBadge, DueBadge, StatusBadge } from '@/components/app/badges'
+import { DeferralFormDialog } from '@/components/app/deferral-form-dialog'
+import { Empty, LoadError, Loading } from '@/components/app/load-state'
+import { Button } from '@/components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { api, type Equipment } from '@/lib/api'
+import { formatDate } from '@/lib/format'
+import { useLoad } from '@/lib/use-load'
+import { CalendarClock } from 'lucide-react'
+import { useState } from 'react'
+
+/** Screen 1: equipment list, with "request deferral" per row. */
+export function EquipmentPage({
+  userId,
+  refreshKey,
+  onChanged,
+}: {
+  userId: number
+  refreshKey: number
+  onChanged: () => void
+}) {
+  const [selected, setSelected] = useState<Equipment | null>(null)
+  const { data, error } = useLoad(
+    () => Promise.all([api.equipment(userId), api.deferrals(userId)]),
+    `${userId}:${refreshKey}`,
+  )
+
+  if (error) return <LoadError message={error} />
+  if (!data) return <Loading />
+
+  const [equipment, deferrals] = data
+  if (equipment.length === 0) return <Empty>ไม่มีอุปกรณ์</Empty>
+
+  // Only one pending request per equipment is allowed (server enforces it).
+  const pendingIds = new Set(
+    deferrals.filter((d) => d.status === 'pending').map((d) => d.equipmentId),
+  )
+
+  return (
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>รหัส</TableHead>
+            <TableHead>ชื่ออุปกรณ์</TableHead>
+            <TableHead>ตำแหน่งติดตั้ง</TableHead>
+            <TableHead>Criticality</TableHead>
+            <TableHead>กำหนดตรวจครั้งถัดไป</TableHead>
+            <TableHead className="text-right" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {equipment.map((e) => (
+            <TableRow key={e.id}>
+              <TableCell className="font-mono font-medium">{e.tagNo}</TableCell>
+              <TableCell>{e.name}</TableCell>
+              <TableCell className="text-muted-foreground">{e.location}</TableCell>
+              <TableCell>
+                <CriticalityBadge value={e.criticality} />
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  {formatDate(e.nextDueDate)}
+                  <DueBadge date={e.nextDueDate} />
+                </div>
+              </TableCell>
+              <TableCell className="text-right">
+                {pendingIds.has(e.id) ? (
+                  <StatusBadge value="pending" />
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setSelected(e)}>
+                    <CalendarClock />
+                    ขอเลื่อน
+                  </Button>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      <DeferralFormDialog
+        equipment={selected}
+        userId={userId}
+        onClose={() => setSelected(null)}
+        onSubmitted={() => {
+          setSelected(null)
+          onChanged()
+        }}
+      />
+    </>
+  )
+}

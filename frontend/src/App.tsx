@@ -1,122 +1,100 @@
+import { LoadError, Loading } from '@/components/app/load-state'
+import { UserSwitcher } from '@/components/app/user-switcher'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Toaster } from '@/components/ui/sonner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { api } from '@/lib/api'
+import { ROLE_LABEL } from '@/lib/format'
+import { useLoad } from '@/lib/use-load'
+import { EquipmentPage } from '@/pages/equipment-page'
+import { PendingApprovalsPage } from '@/pages/pending-approvals-page'
+import { RequestsPage } from '@/pages/requests-page'
+import { ClipboardCheck, ClipboardList, Wrench } from 'lucide-react'
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+const USER_KEY = 'inspection.userId'
+
+export default function App() {
+  const { data: users, error } = useLoad(() => api.users(), 'users')
+  const [storedId, setStoredId] = useState<number | null>(() => {
+    const saved = Number(localStorage.getItem(USER_KEY))
+    return Number.isInteger(saved) && saved > 0 ? saved : null
+  })
+  // Bumped after any change so every screen refetches.
+  const [refreshKey, setRefreshKey] = useState(0)
+  const refresh = () => setRefreshKey((k) => k + 1)
+
+  const user = users?.find((u) => u.id === storedId) ?? users?.[0] ?? null
+
+  const switchUser = (id: number) => {
+    localStorage.setItem(USER_KEY, String(id))
+    setStoredId(id)
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="min-h-svh bg-muted/40">
+      <header className="border-b bg-background">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
+          <div>
+            <h1 className="text-lg font-semibold">ระบบขอเลื่อนกำหนดตรวจสอบอุปกรณ์</h1>
+            <p className="text-sm text-muted-foreground">Equipment Inspection Deferral</p>
+          </div>
+          {users && user && (
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary">{ROLE_LABEL[user.role]}</Badge>
+              <UserSwitcher users={users} value={user.id} onChange={switchUser} />
+            </div>
+          )}
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
+      <main className="mx-auto max-w-7xl px-6 py-6">
+        {error && <LoadError message={error} />}
+        {!error && !user && <Loading />}
+        {user && (
+          <Tabs defaultValue="equipment">
+            <TabsList>
+              <TabsTrigger value="equipment">
+                <Wrench />
+                รายการอุปกรณ์
+              </TabsTrigger>
+              <TabsTrigger value="approvals">
+                <ClipboardCheck />
+                รออนุมัติ
+              </TabsTrigger>
+              <TabsTrigger value="requests">
+                <ClipboardList />
+                คำขอทั้งหมด
+              </TabsTrigger>
+            </TabsList>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+            <Card className="mt-4">
+              <CardContent>
+                <TabsContent value="equipment">
+                  <EquipmentPage
+                    userId={user.id}
+                    refreshKey={refreshKey}
+                    onChanged={refresh}
+                  />
+                </TabsContent>
+                <TabsContent value="approvals">
+                  <PendingApprovalsPage
+                    user={user}
+                    refreshKey={refreshKey}
+                    onChanged={refresh}
+                  />
+                </TabsContent>
+                <TabsContent value="requests">
+                  <RequestsPage userId={user.id} refreshKey={refreshKey} />
+                </TabsContent>
+              </CardContent>
+            </Card>
+          </Tabs>
+        )}
+      </main>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <Toaster richColors position="top-right" />
+    </div>
   )
 }
-
-export default App
