@@ -7,6 +7,10 @@ export default defineConfig({
   test: {
     globals: true,
     root: './',
-    include: ['**/*.spec.ts'],
+    // Unit tests live next to the code (src/**), HTTP tests in test/**.
+    include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
+    // HTTP tests share one real database: run files one at a time so they
+    // never see each other's rows.
+    fileParallelism: false,
   },
 });
