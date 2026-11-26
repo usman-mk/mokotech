@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, USERS } from './helpers/test-app.js';
+import { createTestApp, resetDatabase, USERS } from './helpers/test-app.js';
 
 describe('Users, equipment and X-User-Id (HTTP)', () => {
   let app: INestApplication;
@@ -8,6 +8,7 @@ describe('Users, equipment and X-User-Id (HTTP)', () => {
 
   beforeAll(async () => {
     app = await createTestApp();
+    await resetDatabase(app);
   });
 
   afterAll(async () => {
