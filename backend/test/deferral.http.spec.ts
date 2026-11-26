@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { DataSource } from 'typeorm';
 import { addDays } from '../src/common/date-only.js';
 import {
   createTestApp,
@@ -183,7 +184,9 @@ describe('Deferral requests (HTTP + real database)', () => {
         submit(USERS.requester, body),
         submit(USERS.requester2, body),
       ]);
-      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409]);
+      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([
+        201, 409,
+      ]);
     });
   });
 
@@ -421,6 +424,173 @@ describe('Deferral requests (HTTP + real database)', () => {
         .get('/deferral-requests/abc')
         .set('X-User-Id', String(USERS.requester))
         .expect(404);
+    });
+  });
+
+  describe('edge cases (Phase 4 review)', () => {
+    it('A: two deferrals adding up to exactly 30 days stay with the supervisor', async () => {
+      await deferAndApprove(EQUIPMENT.psv1003A, 20);
+      const second = await submitDays(EQUIPMENT.psv1003A, 10, 201); // 30
+      expect(second.body.requiredApproverRole).toBe('supervisor');
+      await approve(USERS.supervisor, second.body.id).expect(200);
+    });
+
+    // PSV-1001 is 12 days overdue: the 30 days still count from its
+    // original (past) due date, not from today.
+    it.each([
+      ['today (12 days)', 12, 'supervisor'],
+      ['today + 18 (30 days)', 30, 'supervisor'],
+      ['today + 19 (31 days)', 31, 'department_manager'],
+    ])(
+      'overdue A equipment, new date %s -> %s',
+      async (_label, days, expected) => {
+        const res = await submitDays(EQUIPMENT.psv1001A, days, 201);
+        expect(res.body.requiredApproverRole).toBe(expected);
+      },
+    );
+
+    it('re-evaluates policy 4.2 at approval instead of trusting the stored routing', async () => {
+      const current = await dueDate(EQUIPMENT.psv1003A);
+      const pending = await submitDays(EQUIPMENT.psv1003A, 5, 201);
+      expect(pending.body.requiredApproverRole).toBe('supervisor');
+
+      // History changes behind the app's back: two approved deferrals that
+      // led to the current due date now exist in this cycle.
+      const base = addDays(current, -20);
+      const middle = addDays(current, -10);
+      await app.get(DataSource).query(
+        `INSERT INTO deferral_request
+           (equipment_id, requested_by, previous_due_date, cycle_base_due_date,
+            requested_due_date, reason, status, required_approver_role,
+            decided_by, decided_at)
+         VALUES ($1, 1, $2, $2, $3, 'old', 'approved', 'supervisor', 3, now()),
+                ($1, 1, $3, $2, $4, 'old', 'approved', 'supervisor', 3, now())`,
+        [EQUIPMENT.psv1003A, base, middle, current],
+      );
+
+      // The pending request is now the 3rd deferral: the supervisor may not
+      // approve it any more, the manager may.
+      const res = await approve(USERS.supervisor, pending.body.id).expect(403);
+      expect(res.body.message).toMatch(/department_manager/);
+
+      const approved = await approve(USERS.manager, pending.body.id).expect(
+        200,
+      );
+      expect(approved.body).toEqual(
+        expect.objectContaining({
+          requiredApproverRole: 'department_manager',
+          cycleBaseDueDate: base,
+          policyNote: expect.stringContaining('deferral #3'),
+        }),
+      );
+    });
+
+    it('two approvers at the same time: exactly one succeeds', async () => {
+      const created = await submitDays(EQUIPMENT.psv1003A, 10, 201);
+      const results = await Promise.all([
+        approve(USERS.supervisor, created.body.id),
+        approve(USERS.supervisor2, created.body.id),
+      ]);
+      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([
+        200, 409,
+      ]);
+      expect(await dueDate(EQUIPMENT.psv1003A)).toBe(
+        created.body.requestedDueDate,
+      );
+    });
+
+    it('approve and reject at the same time: one wins and the data matches it', async () => {
+      const current = await dueDate(EQUIPMENT.psv1003A);
+      const created = await submitDays(EQUIPMENT.psv1003A, 10, 201);
+      const [approveRes, rejectRes] = await Promise.all([
+        approve(USERS.supervisor, created.body.id),
+        reject(USERS.supervisor2, created.body.id, 'no'),
+      ]);
+      expect(
+        [approveRes.status, rejectRes.status].sort((a, b) => a - b),
+      ).toEqual([200, 409]);
+
+      const final = await http()
+        .get(`/deferral-requests/${created.body.id}`)
+        .set('X-User-Id', String(USERS.requester))
+        .expect(200);
+      const expectedDate =
+        final.body.status === 'approved'
+          ? created.body.requestedDueDate
+          : current;
+      expect(await dueDate(EQUIPMENT.psv1003A)).toBe(expectedDate);
+    });
+
+    it('submit waits for a concurrent change to the equipment row and uses its result', async () => {
+      const current = await dueDate(EQUIPMENT.psv1003A);
+      const moved = addDays(current, 3);
+
+      // Another transaction (e.g. an approval being committed) holds the
+      // equipment row and is about to change the due date.
+      const other = app.get(DataSource).createQueryRunner();
+      await other.connect();
+      await other.startTransaction();
+      try {
+        await other.query('SELECT id FROM equipment WHERE id = $1 FOR UPDATE', [
+          EQUIPMENT.psv1003A,
+        ]);
+
+        let settled = false;
+        const submission = submit(USERS.requester, {
+          equipmentId: EQUIPMENT.psv1003A,
+          requestedDueDate: addDays(current, 10),
+        }).then((res) => {
+          settled = true;
+          return res;
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(settled).toBe(false); // blocked on the row lock
+
+        await other.query(
+          'UPDATE equipment SET next_due_date = $1 WHERE id = $2',
+          [moved, EQUIPMENT.psv1003A],
+        );
+        await other.commitTransaction();
+
+        const res = await submission;
+        expect(res.status).toBe(201);
+        expect(res.body.previousDueDate).toBe(moved); // not the stale date
+      } finally {
+        if (other.isTransactionActive) await other.rollbackTransaction();
+        await other.release();
+      }
+    });
+
+    it('the department manager may reject', async () => {
+      const created = await submitDays(EQUIPMENT.psv1003A, 31, 201);
+      await reject(USERS.manager, created.body.id, 'Inspect first').expect(200);
+    });
+
+    it('reason: 1000 characters accepted, 1001 rejected', async () => {
+      const date = addDays(await dueDate(EQUIPMENT.psv1003A), 5);
+      const body = { equipmentId: EQUIPMENT.psv1003A, requestedDueDate: date };
+      await submit(USERS.requester, body, 'x'.repeat(1001)).expect(400);
+      await submit(USERS.requester, body, 'x'.repeat(1000)).expect(201);
+    });
+
+    // Known limitation (DECISIONS): the seed has one department manager, who
+    // cannot decide their own request, so their escalated request waits.
+    it("the manager's own escalated request cannot be decided by anyone", async () => {
+      const created = await submitDays(
+        EQUIPMENT.psv1003A,
+        31,
+        201,
+        USERS.manager,
+      );
+      await approve(USERS.manager, created.body.id).expect(403);
+      await approve(USERS.supervisor, created.body.id).expect(403);
+
+      const managerQueue = await http()
+        .get('/deferral-requests/pending-approvals')
+        .set('X-User-Id', String(USERS.manager))
+        .expect(200);
+      expect(managerQueue.body).toEqual([]);
     });
   });
 });

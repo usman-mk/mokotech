@@ -247,9 +247,12 @@ export class DeferralService {
     equipment: Equipment,
     requestedDueDate: string,
   ) {
+    // Newest first by id, not decided_at: with one pending request per
+    // equipment, a request is always created after the previous one was
+    // decided, so id order is decision order without trusting server clocks.
     const approved = await m.find(DeferralRequest, {
       where: { equipmentId: equipment.id, status: 'approved' },
-      order: { decidedAt: 'DESC', id: 'DESC' },
+      order: { id: 'DESC' },
     });
     const cycle = resolveCycle(equipment.nextDueDate, approved);
     const decision = evaluateDeferralPolicy({
