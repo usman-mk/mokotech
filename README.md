@@ -18,7 +18,33 @@
 
 ## วิธีรัน
 
-รันจาก root ของ repo ตามลำดับ
+ทุกคำสั่งรันจาก **root ของ repo** — ไม่ต้อง `cd` เข้า `backend/` หรือ `frontend/`
+
+```bash
+cp .env.example .env   # 1. ตั้งค่า environment
+npm run db:up          # 2. เปิดฐานข้อมูล (docker compose up -d)
+npm ci                 # 3. ติดตั้งทั้ง root, backend และ frontend ในคำสั่งเดียว
+npm run dev            # 4. รัน backend (:3000) + frontend (:5173) พร้อมกัน
+```
+
+แล้วเปิด http://localhost:5173 · กด `Ctrl+C` เพื่อหยุดทั้งคู่ · รายละเอียดแต่ละขั้นอยู่ด้านล่าง
+
+### คำสั่งจาก root
+
+เลือกได้ว่าจะทำ **ทั้งคู่** หรือ **เฉพาะฝั่งเดียว**
+
+| งาน | ทั้งคู่ | เฉพาะ backend | เฉพาะ frontend |
+|---|---|---|---|
+| ติดตั้ง | `npm ci` (หรือ `npm run install:all`) | `npm run install:backend` | `npm run install:frontend` |
+| รัน dev | `npm run dev` | `npm run dev:backend` | `npm run dev:frontend` |
+| build | `npm run build` | `npm run build:backend` | `npm run build:frontend` |
+| lint | `npm run lint` | `npm run lint:backend` | `npm run lint:frontend` |
+| test | `npm test` | `npm run test:backend` | — (ไม่มี test ฝั่ง frontend) |
+| ตรวจแบบ CI (lint + build + test) | `npm run ci` | `npm run ci:backend` | `npm run ci:frontend` |
+| ฐานข้อมูล | `npm run db:up` / `npm run db:down` | | |
+
+- `npm ci` ที่ root ติดตั้ง `concurrently` (ใช้รัน 2 server พร้อมกัน) แล้ว `postinstall` จะ `npm ci` ให้ `backend/` และ `frontend/` ต่อเอง
+- แต่ละฝั่งยังมี `package-lock.json` ของตัวเอง จึงเข้าไปรันในโฟลเดอร์ตรง ๆ ได้เหมือนเดิม (CI ใช้วิธีนี้)
 
 ### 1. ตั้งค่า environment
 
@@ -31,32 +57,36 @@ cp .env.example .env
 ### 2. เปิดฐานข้อมูล
 
 ```bash
-docker compose up -d
+npm run db:up        # = docker compose up -d
 ```
 
 ครั้งแรก Postgres จะรัน `seed.sql` ให้เอง (ตาราง `app_user`, `equipment` + ข้อมูลตัวอย่าง)
 
-### 3. Backend — http://localhost:3000
+### 3. ติดตั้ง
 
 ```bash
-cd backend
 npm ci
-npm run start:dev
 ```
 
-ตอน start แอปจะรัน **migration** ที่ยังไม่ได้รันให้อัตโนมัติ (สร้างตาราง `deferral_request`) — ไม่ต้องรันคำสั่งเพิ่ม
-
-### 4. Frontend — http://localhost:5173
-
-เปิด terminal ใหม่:
+### 4. รัน — backend http://localhost:3000 · frontend http://localhost:5173
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+npm run dev          # ทั้งคู่ (log ขึ้นต้นด้วย [backend] / [frontend])
 ```
+
+ตอน backend start จะรัน **migration** ที่ยังไม่ได้รันให้อัตโนมัติ (สร้างตาราง `deferral_request`) — ไม่ต้องรันคำสั่งเพิ่ม
 
 เปิด http://localhost:5173 แล้วเลือกผู้ใช้จาก dropdown มุมขวาบน (แทนการ login)
+
+<details>
+<summary>รันแยกในแต่ละโฟลเดอร์ (ไม่ใช้คำสั่งจาก root)</summary>
+
+```bash
+cd backend  && npm ci && npm run start:dev   # terminal 1
+cd frontend && npm ci && npm run dev         # terminal 2
+```
+
+</details>
 
 ## ผู้ใช้ตัวอย่าง (จาก `seed.sql`)
 
@@ -85,22 +115,20 @@ npm run dev
 
 ## Test
 
-ต้องเปิดฐานข้อมูลไว้ก่อน (`docker compose up -d`)
+ต้องเปิดฐานข้อมูลไว้ก่อน (`npm run db:up`)
 
 ```bash
-cd backend
-npm run test
+npm test             # จาก root (= cd backend && npm run test)
 ```
 
 - Test ใช้ฐานข้อมูลแยก **`inspection_test`** (สร้างให้อัตโนมัติ) — ไม่แตะข้อมูลใน `inspection` ที่ใช้พัฒนา
 - Unit test ของนโยบาย 4.2: `backend/src/deferral/deferral-policy.spec.ts`
 - HTTP test (ยื่น/อนุมัติ/ปฏิเสธ, 4.2 end-to-end, สิทธิ์, ทำงานพร้อมกัน): `backend/test/deferral.http.spec.ts`
 
-คำสั่งเดียวกับ CI:
+ตรวจแบบเดียวกับ CI:
 
 ```bash
-cd backend  && npm ci && npm run lint && npm run build && npm run test
-cd frontend && npm ci && npm run lint && npm run build
+npm run ci           # backend: lint + build + test, frontend: lint + build
 ```
 
 ## Schema และ migration
@@ -112,12 +140,12 @@ cd frontend && npm ci && npm run lint && npm run build
 | `InitSeed` | สร้าง `app_user`, `equipment` + ข้อมูลตาม `seed.sql` แบบ idempotent — บน DB ที่ docker seed แล้วจะไม่เปลี่ยนอะไร, บน DB ว่าง (เช่นใน CI) จะได้ข้อมูลตั้งต้น |
 | `CreateDeferralRequest` | ตาราง `deferral_request` + constraint + index |
 
-คำสั่ง (รันใน `backend/`):
+คำสั่ง (จาก root ใส่ `--prefix backend`):
 
 ```bash
-npm run migration:show     # ดูสถานะ
-npm run migration:run      # รันที่ค้าง (ปกติแอปรันให้ตอน start อยู่แล้ว)
-npm run migration:revert   # ย้อน 1 migration
+npm run migration:show --prefix backend     # ดูสถานะ
+npm run migration:run --prefix backend      # รันที่ค้าง (ปกติแอปรันให้ตอน start อยู่แล้ว)
+npm run migration:revert --prefix backend   # ย้อน 1 migration
 ```
 
 ## API
@@ -150,6 +178,7 @@ Status code: `400` ข้อมูลไม่ถูกต้อง · `401` ไ
 ## โครงสร้าง
 
 ```
+package.json         คำสั่งจาก root (เรียก backend/frontend ผ่าน --prefix)
 backend/
   src/auth/          X-User-Id guard, @Roles, @Public, @CurrentUser
   src/deferral/      คำขอเลื่อน: policy 4.2, service, controller, DTO
@@ -173,3 +202,4 @@ frontend/
 | port 5432 ถูกใช้อยู่ | ตั้ง `POSTGRES_PORT` ใน `.env` และแก้ port ใน `DATABASE_URL` ให้ตรงกัน |
 | หน้าเว็บขึ้น "เชื่อมต่อ API ไม่ได้" | backend ยังไม่รัน หรือรันคนละ port — ตั้ง `VITE_API_URL` ใน `frontend/.env` |
 | แก้ `seed.sql` แล้วไม่มีผล | seed รันตอนสร้าง volume ครั้งแรกเท่านั้น: `docker compose down -v && docker compose up -d` |
+| `npm run dev` แล้วฝั่งหนึ่งพัง อีกฝั่งหยุดตาม | ตั้งใจไว้ (`--kill-others-on-fail`) — ดู log ที่ขึ้นต้นด้วย `[backend]` / `[frontend]` หรือรันแยกด้วย `npm run dev:backend` / `npm run dev:frontend` |
