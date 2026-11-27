@@ -10,7 +10,8 @@ import { useLoad } from '@/lib/use-load'
 import { EquipmentPage } from '@/pages/equipment-page'
 import { PendingApprovalsPage } from '@/pages/pending-approvals-page'
 import { RequestsPage } from '@/pages/requests-page'
-import { ClipboardCheck, ClipboardList, Wrench } from 'lucide-react'
+import { SubmitRequestPage } from '@/pages/submit-request-page'
+import { ClipboardCheck, ClipboardList, FilePlus, Wrench } from 'lucide-react'
 import { useState } from 'react'
 
 const USER_KEY = 'inspection.userId'
@@ -24,6 +25,7 @@ export default function App() {
   // Bumped after any change so every screen refetches.
   const [refreshKey, setRefreshKey] = useState(0)
   const refresh = () => setRefreshKey((k) => k + 1)
+  const [tab, setTab] = useState('equipment')
 
   const user = users?.find((u) => u.id === storedId) ?? users?.[0] ?? null
 
@@ -53,11 +55,15 @@ export default function App() {
         {error && <LoadError message={error} />}
         {!error && !user && <Loading />}
         {user && (
-          <Tabs defaultValue="equipment">
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
               <TabsTrigger value="equipment">
                 <Wrench />
                 รายการอุปกรณ์
+              </TabsTrigger>
+              <TabsTrigger value="submit">
+                <FilePlus />
+                ยื่นคำขอ
               </TabsTrigger>
               <TabsTrigger value="approvals">
                 <ClipboardCheck />
@@ -73,6 +79,14 @@ export default function App() {
               <CardContent>
                 <TabsContent value="equipment">
                   <EquipmentPage
+                    userId={user.id}
+                    refreshKey={refreshKey}
+                    onChanged={refresh}
+                    onRequestNew={() => setTab('submit')}
+                  />
+                </TabsContent>
+                <TabsContent value="submit">
+                  <SubmitRequestPage
                     userId={user.id}
                     refreshKey={refreshKey}
                     onChanged={refresh}

@@ -13,18 +13,21 @@ import {
 import { api, type Equipment } from '@/lib/api'
 import { formatDate } from '@/lib/format'
 import { useLoad } from '@/lib/use-load'
-import { CalendarClock } from 'lucide-react'
+import { CalendarClock, FilePlus } from 'lucide-react'
 import { useState } from 'react'
 
-/** Screen 1: equipment list, with "request deferral" per row. */
+/** Screen 1: equipment list; each row opens the request form for that item. */
 export function EquipmentPage({
   userId,
   refreshKey,
   onChanged,
+  onRequestNew,
 }: {
   userId: number
   refreshKey: number
   onChanged: () => void
+  /** Opens the standalone request form tab. */
+  onRequestNew: () => void
 }) {
   const [selected, setSelected] = useState<Equipment | null>(null)
   const { data, error } = useLoad(
@@ -45,6 +48,16 @@ export function EquipmentPage({
 
   return (
     <>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          กด <span className="font-medium text-foreground">ยื่นคำขอ</span> ท้ายแถว
+          หรือปุ่มด้านขวาเพื่อขอเลื่อนกำหนดตรวจสอบ
+        </p>
+        <Button onClick={onRequestNew}>
+          <FilePlus />
+          ยื่นคำขอเลื่อนกำหนดตรวจ
+        </Button>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -77,7 +90,7 @@ export function EquipmentPage({
                 ) : (
                   <Button size="sm" variant="outline" onClick={() => setSelected(e)}>
                     <CalendarClock />
-                    ขอเลื่อน
+                    ยื่นคำขอ
                   </Button>
                 )}
               </TableCell>

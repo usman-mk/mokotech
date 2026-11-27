@@ -78,6 +78,8 @@ npm run dev          # ทั้งคู่ (log ขึ้นต้นด้ว
 
 เปิด http://localhost:5173 แล้วเลือกผู้ใช้จาก dropdown มุมขวาบน (แทนการ login)
 
+หน้าจอ: **รายการอุปกรณ์** (ปุ่ม "ยื่นคำขอ" ท้ายแต่ละแถว) · **ยื่นคำขอ** (ฟอร์มเลือกอุปกรณ์ + วันที่ใหม่ + เหตุผล) · **รออนุมัติ** (หัวหน้างาน / ผู้จัดการฝ่าย) · **คำขอทั้งหมด** (ผลการพิจารณา)
+
 <details>
 <summary>รันแยกในแต่ละโฟลเดอร์ (ไม่ใช้คำสั่งจาก root)</summary>
 
@@ -187,8 +189,8 @@ backend/
   src/database/      data source + migrations
   test/              HTTP test (+ setup ที่สร้าง DB inspection_test)
 frontend/
-  src/pages/         หน้ารายการอุปกรณ์, รออนุมัติ, คำขอทั้งหมด
-  src/components/app ฟอร์มยื่นคำขอ, dialog อนุมัติ/ปฏิเสธ, user switcher
+  src/pages/         หน้ารายการอุปกรณ์, ยื่นคำขอ, รออนุมัติ, คำขอทั้งหมด
+  src/components/app ฟอร์มยื่นคำขอ (ใช้ทั้งหน้ายื่นคำขอและ dialog ท้ายแถว), dialog อนุมัติ/ปฏิเสธ, user switcher
   src/components/ui  component ของ shadcn/ui (ติดตั้งด้วย npx shadcn@latest add)
   src/lib/           API client, format, hook โหลดข้อมูล
 ```
